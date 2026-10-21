@@ -1,0 +1,10 @@
+node_modules/
+dist/
+.env*
+!.env.example
+.firebase/
+*-debug.log
+playwright-report/
+test-results/
+*.local
+*.tsbuildinfo

@@ -1,0 +1,66 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+    "rooms": {
+      "$code": {
+        ".read": "auth != null && data.child('expiresAt').val() > now && (data.child('hostId').val() === auth.uid || data.child('players').child(auth.uid).exists())",
+        ".write": "auth != null && ((!data.exists() && newData.child('hostId').val() === auth.uid && $code.matches(/^[A-HJ-NP-Z]{6}$/)) || (data.child('hostId').val() === auth.uid && data.child('expiresAt').val() > now))",
+        ".validate": "newData.hasChildren(['hostId', 'createdAt', 'expiresAt', 'settings', 'state']) && (!data.exists() || newData.child('hostId').val() === data.child('hostId').val())",
+        "hostId": { ".validate": "newData.isString() && newData.val().length < 128" },
+        "createdAt": { ".validate": "newData.isNumber() && newData.val() <= now + 10000" },
+        "expiresAt": { ".validate": "newData.isNumber() && newData.val() <= now + 21610000" },
+        "settings": {
+          ".validate": "newData.hasChildren(['mode', 'capacity', 'teams', 'rounds', 'seconds', 'category'])",
+          "mode": { ".validate": "newData.val() === 'mix' || newData.val() === 'clue' || newData.val() === 'poll' || newData.val() === 'board' || newData.val() === 'list'" },
+          "capacity": { ".validate": "newData.val() === 4 || newData.val() === 6" },
+          "teams": { ".validate": "newData.isBoolean()" },
+          "rounds": { ".validate": "newData.isNumber() && newData.val() >= 1 && newData.val() <= 12" },
+          "seconds": { ".validate": "newData.val() === 24 || newData.val() === 36" },
+          "category": { ".validate": "newData.isString() && newData.val().length <= 30" },
+          "$other": { ".validate": false }
+        },
+        "state": { ".validate": "newData.hasChildren(['phase', 'round', 'questionId', 'startedAt', 'deadline', 'revealText'])" },
+        "seats": {
+          ".read": "auth != null",
+          "$slot": {
+            ".write": "auth != null && root.child('rooms').child($code).child('expiresAt').val() > now && ((!newData.exists() && data.val() === auth.uid) || (root.child('rooms').child($code).child('state/phase').val() === 'lobby' && (!data.exists() || data.val() === auth.uid) && newData.val() === auth.uid && ($slot === '0' || $slot === '1' || $slot === '2' || $slot === '3' || (root.child('rooms').child($code).child('settings/capacity').val() === 6 && ($slot === '4' || $slot === '5')))))",
+            ".validate": "newData.isString() && newData.val().length < 128"
+          }
+        },
+        "players": {
+          "$uid": {
+            ".write": "auth != null && auth.uid === $uid && root.child('rooms').child($code).child('expiresAt').val() > now && ((!newData.exists()) || (data.exists() && newData.child('uid').val() === data.child('uid').val() && newData.child('name').val() === data.child('name').val() && newData.child('avatar').val() === data.child('avatar').val() && newData.child('slot').val() === data.child('slot').val() && (root.child('rooms').child($code).child('state/phase').val() === 'lobby' || newData.child('team').val() === data.child('team').val())) || (!data.exists() && root.child('rooms').child($code).child('state/phase').val() === 'lobby' && root.child('rooms').child($code).child('seats').child(newData.child('slot').val() + '').val() === auth.uid))",
+            ".validate": "newData.hasChildren(['uid', 'name', 'avatar', 'team', 'slot', 'joinedAt', 'online']) && newData.child('uid').val() === $uid && root.child('rooms').child($code).child('seats').child(newData.child('slot').val() + '').val() === $uid",
+            "uid": { ".validate": "newData.isString() && newData.val() === $uid" },
+            "name": { ".validate": "newData.isString() && newData.val().length >= 1 && newData.val().length <= 18" },
+            "avatar": { ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 7 && newData.val() % 1 === 0" },
+            "team": { ".validate": "newData.val() === 0 || newData.val() === 1" },
+            "slot": { ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 5 && newData.val() % 1 === 0" },
+            "joinedAt": { ".validate": "newData.isNumber() && newData.val() <= now + 10000" },
+            "online": { ".validate": "newData.isBoolean()" },
+            "$other": { ".validate": false }
+          }
+        },
+        "$other": { ".validate": false }
+      }
+    },
+    "answers": {
+      "$code": {
+        ".read": "auth != null && root.child('rooms').child($code).child('hostId').val() === auth.uid && root.child('rooms').child($code).child('expiresAt').val() > now",
+        ".write": "auth != null && root.child('rooms').child($code).child('hostId').val() === auth.uid && !newData.exists()",
+        "$round": {
+          "$uid": {
+            ".read": "auth != null && auth.uid === $uid",
+            ".write": "auth != null && auth.uid === $uid && !data.exists() && root.child('rooms').child($code).child('players').child($uid).exists() && root.child('rooms').child($code).child('expiresAt').val() > now && root.child('rooms').child($code).child('state/phase').val() === 'question' && root.child('rooms').child($code).child('state/round').val() + '' === $round && now >= root.child('rooms').child($code).child('state/startedAt').val() && now <= root.child('rooms').child($code).child('state/deadline').val()",
+            ".validate": "newData.hasChildren(['value', 'at'])",
+            "value": { ".validate": "(newData.isString() && newData.val().length >= 1 && newData.val().length <= 240) || (newData.isNumber() && newData.val() >= 0 && newData.val() <= 3 && newData.val() % 1 === 0)" },
+            "prediction": { ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 3 && newData.val() % 1 === 0" },
+            "at": { ".validate": "newData.isNumber() && newData.val() === now" },
+            "$other": { ".validate": false }
+          }
+        }
+      }
+    }
+  }
+}
