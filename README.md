@@ -21,7 +21,7 @@ An internet connection is required for multiplayer. Solo practice works offline 
 - **List Blitz**: up to five guesses, 150 points per canonical match and 100 more for each answer no other player found.
 - **Party Mix**: rotates all four modes in a nine-round classic game. Six-round games include trivia, predictions, and a board; twelve-round games extend the mix.
 
-The initial pack contains 58 prompts: 30 trivia questions, 12 opinion questions, eight curated boards, and eight list questions. Short packs are capped to avoid repeats within a game. Replay variation comes from room-seeded shuffling. Facts are stable general knowledge; the starter pack still benefits from broader editorial and party playtesting.
+The initial pack contains 58 prompts: 30 trivia questions, 12 opinion questions, eight curated boards, and eight list questions. Short packs are capped to avoid repeats within a game. Each rematch gets a fresh shuffle seed, and answer positions are shuffled consistently across the host and controllers. Facts are stable general knowledge; the starter pack still benefits from broader editorial and party playtesting.
 
 ## Development
 
