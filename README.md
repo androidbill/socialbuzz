@@ -13,6 +13,18 @@ Play at **https://androidbill.github.io/socialbuzz/**.
 
 An internet connection is required for multiplayer. Solo practice works offline after the app has been loaded and cached. Installation is optional; availability depends on the browser.
 
+## Installation and updates
+
+Choose **Install app** at the top on desktop or phone. Supported browsers show their native install dialog. Other browsers show platform instructions and a link to open in a regular browser. The install action is hidden when SocialBuzz is already running as an installed app.
+
+The header displays the release in `year.month.day.sequence` form, starting at **2026.10.21.01**. The date uses **America/Edmonton**. A new release on the same day increments the final number; a new day starts at `01`. The version badge also checks for updates when tapped.
+
+The app checks uncached `version.json` on opening, returning to the foreground, reconnecting, and every five minutes while visible. A newer release shows a **Refresh** prompt. The service worker downloads the update in the background and activates it only after Refresh is chosen. Refresh preserves the room URL and saved guest identity; locked answers remain in Firebase. An offline or failed update leaves the current app running and offers a retry.
+
+For a subsequent logical release, run `npm run version:bump` once. It checks the live version to avoid reusing an older counter and updates `release.json`. GitHub Actions provides an additional automatic increment if the source bump was missed, so every new deployed commit receives a newer version. Redeploying the same published commit keeps its version. Local test builds do not consume published version numbers.
+
+The build emits one matching version in the app, `version.json`, and `sw.js`. Release metadata always uses the network and is never served from the offline cache.
+
 ## Games included
 
 - **Clue Chase**: four choices, three timed clues, decreasing points, and one irrevocable answer. Correct answers earn 250–1,000 points plus a 100-point speed bonus for the earliest correct response (shared within a 200 ms window).

@@ -50,6 +50,7 @@ import {
 } from "./engine";
 import * as api from "./firebase";
 import { onValue, ref } from "firebase/database";
+import { APP_VERSION, usePwa } from "./usePwa";
 import {
   DEFAULT_SETTINGS,
   type Answer,
@@ -203,6 +204,7 @@ function tone(success: boolean, muted: boolean) {
 }
 
 export default function App() {
+  const pwa = usePwa();
   const initialCode =
     new URLSearchParams(location.search)
       .get("room")
@@ -225,7 +227,7 @@ export default function App() {
         : savedSession,
   );
   const [modal, setModal] = useState<
-    "host" | "join" | "help" | "practice" | "leave" | null
+    "host" | "join" | "help" | "practice" | "leave" | "install" | null
   >(shouldJoin ? "join" : null);
   const [settings, setSettings] = useState<Settings>(() =>
     readSaved("socialbuzz.settings", DEFAULT_SETTINGS),
@@ -241,9 +243,6 @@ export default function App() {
   );
   const [online, setOnline] = useState(navigator.onLine);
   const [connected, setConnected] = useState(false);
-  const [install, setInstall] = useState<
-    (Event & { prompt: () => Promise<void> }) | null
-  >(null);
   const [auto, setAuto] = useState(true);
   const advanceLock = useRef(false);
   const time = useTick();
@@ -260,17 +259,11 @@ export default function App() {
   useEffect(() => {
     const up = () => setOnline(true);
     const down = () => setOnline(false);
-    const offer = (e: Event) => {
-      e.preventDefault();
-      setInstall(e as Event & { prompt: () => Promise<void> });
-    };
     window.addEventListener("online", up);
     window.addEventListener("offline", down);
-    window.addEventListener("beforeinstallprompt", offer);
     return () => {
       window.removeEventListener("online", up);
       window.removeEventListener("offline", down);
-      window.removeEventListener("beforeinstallprompt", offer);
     };
   }, []);
   useEffect(() => {
@@ -420,20 +413,52 @@ export default function App() {
   return (
     <div className="app-shell">
       <header className="topbar">
-        <button
-          className="brand"
-          aria-label="SocialBuzz home"
-          onClick={() => (session ? setModal("leave") : goHome())}
-        >
-          <span className="brand-mark">
-            <Zap size={24} fill="currentColor" />
-          </span>
-          <span>
-            Social<span className="brand-light">Buzz</span>
-            <span className="brand-dot">.</span>
-          </span>
-        </button>
+        <div className="brand-group">
+          <button
+            className="brand"
+            aria-label="SocialBuzz home"
+            onClick={() => (session ? setModal("leave") : goHome())}
+          >
+            <span className="brand-mark">
+              <Zap size={24} fill="currentColor" />
+            </span>
+            <span>
+              Social<span className="brand-light">Buzz</span>
+              <span className="brand-dot">.</span>
+            </span>
+          </button>
+          <button
+            className="version-badge"
+            aria-label={`Version ${APP_VERSION}. Check for updates`}
+            title="Check for updates"
+            onClick={async () => {
+              const checked = await pwa.checkForUpdates();
+              if (!checked)
+                setToast(
+                  "Couldn’t check for updates. Try again when you’re online.",
+                );
+              else if (!checked.updateAvailable)
+                setToast("SocialBuzz is up to date.");
+            }}
+          >
+            <span>VERSION</span>
+            {APP_VERSION}
+          </button>
+        </div>
         <nav aria-label="Main navigation">
+          {!pwa.installed && (
+            <button
+              className="nav-link install-action"
+              aria-label="Install app"
+              onClick={async () => {
+                if ((await pwa.install()) === "unavailable")
+                  setModal("install");
+              }}
+            >
+              <Download size={16} />
+              <span>Install app</span>
+            </button>
+          )}
           {!session && (
             <a href="#games" className="nav-link">
               The games
@@ -447,18 +472,6 @@ export default function App() {
             <HelpCircle size={16} />
             <span>How to play</span>
           </button>
-          {install && (
-            <button
-              className="nav-link install"
-              onClick={async () => {
-                await install.prompt();
-                setInstall(null);
-              }}
-            >
-              <Download size={16} />
-              <span>Install</span>
-            </button>
-          )}
           <span className="nav-divider" />
           <button
             className="icon-button"
@@ -479,6 +492,43 @@ export default function App() {
           )}
         </nav>
       </header>
+      {pwa.latest && (
+        <section
+          className="update-banner"
+          role="status"
+          aria-label="App update available"
+        >
+          <span className="update-mark">
+            <Download size={20} />
+          </span>
+          <div>
+            <strong>A fresh SocialBuzz is ready.</strong>
+            <p>
+              Version {pwa.latest.version} is available.{" "}
+              {session
+                ? "Refresh between rounds; your room and locked answers are saved."
+                : "Refresh to get the latest improvements."}
+            </p>
+            {pwa.updateError && (
+              <p className="update-error" role="alert">
+                {pwa.updateError}
+              </p>
+            )}
+          </div>
+          <button
+            className="button primary"
+            disabled={pwa.refreshing}
+            onClick={() => void pwa.refresh()}
+          >
+            {pwa.refreshing ? (
+              <LoaderCircle className="spin" size={16} />
+            ) : (
+              <RotateCcw size={16} />
+            )}
+            {pwa.refreshing ? "Refreshing…" : "Refresh"}
+          </button>
+        </section>
+      )}
       {!online && (
         <div className="connection-banner" role="status">
           <WifiOff size={16} /> You’re offline. Solo practice is available; live
@@ -886,6 +936,101 @@ export default function App() {
         </main>
       )}
 
+      {modal === "install" && (
+        <Modal title="Install SocialBuzz" close={() => setModal(null)}>
+          <div className="dialog-title">
+            <span className="dialog-icon">
+              <Download />
+            </span>
+            <h2>Your game night. One tap away.</h2>
+            <p>
+              Install SocialBuzz for a home-screen icon and its own app window.
+              No app store or account needed.
+            </p>
+          </div>
+          {pwa.canPrompt && (
+            <button
+              className="button primary full"
+              onClick={async () => {
+                if ((await pwa.install()) === "accepted") setModal(null);
+              }}
+            >
+              <Download size={17} />
+              Install SocialBuzz
+            </button>
+          )}
+          <div className="install-instructions">
+            <section>
+              <span className="install-platform">
+                <Smartphone size={19} />
+              </span>
+              <div>
+                <h3>iPhone or iPad</h3>
+                <p>
+                  Open SocialBuzz in Safari. Tap <strong>Share</strong>, then{" "}
+                  <strong>Add to Home Screen</strong>. If shown, keep{" "}
+                  <strong>Open as Web App</strong> on, then tap{" "}
+                  <strong>Add</strong>.
+                </p>
+              </div>
+            </section>
+            <section>
+              <span className="install-platform">
+                <Smartphone size={19} />
+              </span>
+              <div>
+                <h3>Android</h3>
+                <p>
+                  Open SocialBuzz in Chrome. Tap the <strong>⋮ menu</strong>,
+                  then <strong>Install app</strong> or{" "}
+                  <strong>Add to Home screen</strong>.
+                </p>
+              </div>
+            </section>
+            <section>
+              <span className="install-platform">
+                <Download size={19} />
+              </span>
+              <div>
+                <h3>Desktop</h3>
+                <p>
+                  Open SocialBuzz in Chrome or Edge. Choose the{" "}
+                  <strong>install icon</strong> near the address bar, or the
+                  install option in the browser’s menu.
+                </p>
+              </div>
+            </section>
+          </div>
+          <div className="install-browser-note">
+            <ExternalLink size={18} />
+            <p>
+              Using an in-app browser? Open the link in your regular browser to
+              install.
+            </p>
+          </div>
+          <button
+            className="button secondary full"
+            onClick={async () => {
+              const url = new URL("./", location.href).href;
+              try {
+                await navigator.clipboard.writeText(url);
+                setToast(
+                  "SocialBuzz link copied. Open it in your browser to install.",
+                );
+              } catch {
+                setToast(url);
+              }
+            }}
+          >
+            <Copy size={16} />
+            Copy app link
+          </button>
+          <p className="field-note">
+            Offline solo practice is included. Multiplayer rooms use an internet
+            connection.
+          </p>
+        </Modal>
+      )}
       {modal === "host" && (
         <Modal
           title="Host a party"

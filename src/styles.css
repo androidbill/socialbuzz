@@ -3000,6 +3000,205 @@ footer > .text-button {
     font-size: 35px;
   }
 }
+.brand-group {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  min-width: 0;
+}
+.version-badge {
+  background: transparent;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  color: #c4c9d8;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.3px;
+  white-space: nowrap;
+  border-left: 1px solid #363a48;
+  padding-left: 17px;
+}
+.version-badge > span {
+  font-size: 7px;
+  letter-spacing: 1.5px;
+  color: #858da3;
+}
+.topbar .install-action {
+  color: #ffb19e;
+  background: #ff806b0c;
+  border: 1px solid #ff806b33;
+  border-radius: 8px;
+  padding: 9px 12px;
+  white-space: nowrap;
+}
+.topbar .install-action > span {
+  display: inline;
+}
+.update-banner {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  max-width: 1272px;
+  margin: 20px auto 0;
+  padding: 18px 22px;
+  border: 1px solid #a2dfc540;
+  border-radius: 12px;
+  background: #202d2a;
+}
+.update-mark {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  color: var(--mint);
+  background: #a2dfc50c;
+}
+.update-banner > div {
+  flex: 1;
+}
+.update-banner strong {
+  font-size: 14px;
+  font-weight: 600;
+}
+.update-banner p {
+  font-size: 12px;
+  color: #b4c7bf;
+  line-height: 1.65;
+  margin-top: 4px;
+}
+.update-banner .button {
+  min-height: 42px;
+}
+.update-banner .update-error {
+  color: #ffc0af;
+}
+.install-instructions {
+  display: flex;
+  flex-direction: column;
+  gap: 23px;
+  margin: 24px 0;
+}
+.install-instructions > section {
+  display: flex;
+  gap: 14px;
+}
+.install-platform {
+  display: grid;
+  place-items: center;
+  width: 33px;
+  height: 36px;
+  border-radius: 9px;
+  flex-shrink: 0;
+  color: var(--coral);
+  background: #ff806b0c;
+}
+.install-instructions h3 {
+  font-size: 14px;
+  font-weight: 600;
+  margin: 1px 0 6px;
+}
+.install-instructions p {
+  font-size: 12px;
+  line-height: 1.8;
+  color: #a6aec3;
+}
+.install-instructions strong {
+  color: #e0e1eb;
+  font-weight: 500;
+}
+.install-browser-note {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 17px 0 22px;
+  border-top: 1px solid #34394a;
+  color: #9eabc4;
+}
+.install-browser-note > svg {
+  flex-shrink: 0;
+}
+.install-browser-note p {
+  font-size: 12px;
+  line-height: 1.7;
+}
+@media (max-width: 1100px) {
+  .brand-group {
+    gap: 12px;
+  }
+  .version-badge {
+    padding-left: 12px;
+    font-size: 10px;
+  }
+  .topbar nav {
+    gap: 17px;
+  }
+  .topbar .install-action {
+    padding: 9px 10px;
+    font-size: 12px;
+  }
+  .update-banner {
+    margin-left: 32px;
+    margin-right: 32px;
+  }
+}
+@media (max-width: 800px) {
+  .topbar {
+    flex-wrap: wrap;
+    padding-top: 20px;
+    padding-bottom: 17px;
+    gap: 15px;
+  }
+  .brand-group {
+    width: 100%;
+    justify-content: space-between;
+  }
+  .version-badge {
+    align-items: flex-end;
+    border-left: 0;
+    padding-left: 0;
+    font-size: 11px;
+  }
+  .version-badge > span {
+    font-size: 7px;
+  }
+  .topbar nav {
+    width: 100%;
+    gap: 14px;
+    justify-content: flex-end;
+  }
+  .topbar .install-action {
+    margin-right: auto;
+    padding: 10px 13px;
+    font-size: 12px;
+  }
+  .topbar .nav-link[href="#games"],
+  .topbar .nav-divider {
+    display: none;
+  }
+  .update-banner {
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-left: 22px;
+    margin-right: 22px;
+    padding: 16px;
+  }
+  .update-banner > div {
+    flex-basis: calc(100% - 56px);
+  }
+  .update-banner strong {
+    font-size: 13px;
+  }
+  .update-banner p {
+    font-size: 11px;
+  }
+  .update-banner .button {
+    width: 100%;
+  }
+}
 @media (prefers-reduced-motion: reduce) {
   html {
     scroll-behavior: auto;

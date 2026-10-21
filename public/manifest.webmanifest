@@ -6,6 +6,9 @@
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
+  "prefer_related_applications": false,
+  "lang": "en",
+  "categories": ["games", "entertainment"],
   "background_color": "#10121b",
   "theme_color": "#10121b",
   "icons": [

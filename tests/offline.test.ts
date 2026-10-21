@@ -12,6 +12,7 @@ function worker() {
   entries.set("socialbuzz-old", new Map());
   const handlers: Record<string, (event: unknown) => void> = {};
   let offline = false;
+  let activated = false;
   const response = (url: string) => ({
     url,
     ok: true,
@@ -59,7 +60,9 @@ function worker() {
         ) => {
           handlers[name] = callback;
         },
-        skipWaiting: () => {},
+        skipWaiting: async () => {
+          activated = true;
+        },
         clients: { claim: async () => {} },
       },
       fetch: async (request: { url: string }) => {
@@ -75,10 +78,43 @@ function worker() {
       offline = true;
     },
     origin,
+    activated: () => activated,
   };
 }
 
 describe("offline party app", () => {
+  it("does not activate an update until the Refresh message is received", async () => {
+    const w = worker();
+    let installed = Promise.resolve();
+    w.handlers.install({
+      waitUntil: (promise: Promise<void>) => {
+        installed = promise;
+      },
+    });
+    await installed;
+    expect(w.activated()).toBe(false);
+    let completed = Promise.resolve();
+    w.handlers.message({
+      data: { type: "SOCIALBUZZ_ACTIVATE_UPDATE" },
+      waitUntil: (promise: Promise<void>) => {
+        completed = promise;
+      },
+    });
+    await completed;
+    expect(w.activated()).toBe(true);
+  });
+  it("checks version metadata online without caching it, including when offline", async () => {
+    const w = worker();
+    w.goOffline();
+    let served: Promise<unknown> | undefined;
+    w.handlers.fetch({
+      request: { url: w.origin + "version.json?check=123", method: "GET" },
+      respondWith: (promise: Promise<unknown>) => {
+        served = promise;
+      },
+    });
+    await expect(served).rejects.toThrow("offline");
+  });
   it("installs a cached home screen and serves it when navigation is offline", async () => {
     const w = worker();
     let installed: Promise<unknown> = Promise.resolve();
