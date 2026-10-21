@@ -13,6 +13,7 @@ function worker() {
   const handlers: Record<string, (event: unknown) => void> = {};
   let offline = false;
   let activated = false;
+  const fetchOptions: { cache?: string }[] = [];
   const response = (url: string) => ({
     url,
     ok: true,
@@ -65,7 +66,11 @@ function worker() {
         },
         clients: { claim: async () => {} },
       },
-      fetch: async (request: { url: string }) => {
+      fetch: async (
+        request: { url: string },
+        options: { cache?: string } = {},
+      ) => {
+        fetchOptions.push(options);
         if (offline) throw new Error("offline");
         return response(request.url);
       },
@@ -79,10 +84,27 @@ function worker() {
     },
     origin,
     activated: () => activated,
+    fetchOptions,
   };
 }
 
 describe("offline party app", () => {
+  it("revalidates app navigation instead of trusting a stale HTTP cache", async () => {
+    const w = worker();
+    let served: Promise<unknown> | undefined;
+    w.handlers.fetch({
+      request: {
+        url: w.origin + "?room=ABCDEF",
+        method: "GET",
+        mode: "navigate",
+      },
+      respondWith: (promise: Promise<unknown>) => {
+        served = promise;
+      },
+    });
+    await served;
+    expect(w.fetchOptions[0].cache).toBe("no-cache");
+  });
   it("does not activate an update until the Refresh message is received", async () => {
     const w = worker();
     let installed = Promise.resolve();

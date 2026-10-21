@@ -9,9 +9,19 @@ Play at **https://androidbill.github.io/socialbuzz/**.
 1. Open SocialBuzz on a laptop connected to the TV (or a supported TV browser).
 2. Choose **Host a party**. Select a four- or six-seat room, individual or balanced team play, a mode, and a pace.
 3. Guests scan the QR code or enter the six-letter room code on their phones. The host can join on a phone too.
-4. Start with at least two players. Keep the host screen open; it runs the clock and reveals.
+4. Start with at least two players. Keep the host screen open; it coordinates reveals and round changes.
 
 An internet connection is required for multiplayer. Solo practice works offline after the app has been loaded and cached. Installation is optional; availability depends on the browser.
+
+## Phone synchronization and performance
+
+Firebase stores each round’s absolute `startedAt` and `deadline`. Every phone derives its countdown and clue timing from those shared timestamps, using Firebase’s server clock offset. Display ticks never subtract time from a private countdown, so a paused browser catches up rather than drifting. Answer timestamps and deadline checks are enforced by Firebase. Scores use the server’s accepted submissions, including answers the host’s listener has not displayed yet.
+
+Only the question display, answer controls, and host round controller redraw with the clock. The home screen, lobby, app header, forms, and standings no longer redraw ten times per second. Hidden pages stop display ticks and catch up immediately on visibility, focus, or page restoration.
+
+After a phone returns from the background or reconnects, SocialBuzz replaces the suspended database connection and verifies the room with an authenticated network-only read before enabling answers or host actions. Live snapshots continue normally; an older verification response cannot overwrite a newer live snapshot. A pending answer says “Locking your answer…” until Firebase acknowledges it. App-shell navigation revalidates its HTTP cache, version checks bypass caches, and the service worker does not intercept Firebase traffic. Network timeouts use AbortController for compatibility with older Safari versions.
+
+These safeguards are not a guarantee of zero latency or identical screen updates: Firebase’s server clock offset is an estimate, network delivery varies, and iOS can suspend a locked/backgrounded app. The host must stay open. Release checks cover clock catch-up, resumption, stale-response ordering, server-confirmed scoring, offline behavior, and update handling. Physical testing on a mix of iPhones and Android phones is still required before claiming device-level performance; this workspace does not provide those devices.
 
 ## Installation and updates
 

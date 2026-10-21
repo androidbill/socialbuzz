@@ -1,3 +1,5 @@
+import { withRequestTimeout } from "./network";
+
 export interface PublishedRelease {
   version: string;
   commit?: string;
@@ -17,13 +19,15 @@ export async function fetchRelease(
 ): Promise<PublishedRelease> {
   const url = new URL("version.json", base);
   url.searchParams.set("check", Date.now().toString());
-  const response = await fetcher(url, {
-    cache: "no-store",
-    headers: { "Cache-Control": "no-cache" },
-    signal: AbortSignal.timeout(10000),
-  });
-  if (!response.ok) throw new Error("Could not check for updates.");
-  const release = await response.json();
+  const release = await withRequestTimeout(async (signal) => {
+    const response = await fetcher(url, {
+      cache: "no-store",
+      headers: { "Cache-Control": "no-cache" },
+      signal,
+    });
+    if (!response.ok) throw new Error("Could not check for updates.");
+    return response.json();
+  }, 10000);
   if (
     !release ||
     typeof release.version !== "string" ||

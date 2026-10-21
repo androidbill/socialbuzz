@@ -49,7 +49,7 @@ import {
   teamTotals,
 } from "./engine";
 import * as api from "./firebase";
-import { onValue, ref } from "firebase/database";
+import { observeGameClock } from "./game-clock";
 import { APP_VERSION, usePwa } from "./usePwa";
 import {
   DEFAULT_SETTINGS,
@@ -168,13 +168,58 @@ function Modal({
     </dialog>
   );
 }
-function useTick() {
+function useTick(active = true) {
   const [tick, setTick] = useState(api.now());
   useEffect(() => {
-    const id = setInterval(() => setTick(api.now()), 100);
-    return () => clearInterval(id);
-  }, []);
+    if (active) return observeGameClock(setTick, api.now);
+  }, [active]);
   return tick;
+}
+
+function HostRoundClock({
+  code,
+  room,
+  answers,
+  connected,
+  fail,
+}: {
+  code: string;
+  room: Room;
+  answers: Record<string, Answer>;
+  connected: boolean;
+  fail: (message: string) => void;
+}) {
+  const time = useTick(connected && room.state.phase === "question");
+  const advancing = useRef(false);
+  const retryAt = useRef(0);
+  useEffect(() => {
+    if (
+      !connected ||
+      room.state.phase !== "question" ||
+      advancing.current ||
+      time < retryAt.current
+    )
+      return;
+    const players = Object.values(room.players || {});
+    const allLocked =
+      players.length > 0 && players.every((p) => !!answers[p.uid]);
+    if (
+      time < room.state.deadline &&
+      !(allLocked && time >= room.state.startedAt)
+    )
+      return;
+    advancing.current = true;
+    api
+      .revealRound(code, room)
+      .catch((error) => {
+        retryAt.current = api.now() + 2000;
+        fail(api.friendlyError(error));
+      })
+      .finally(() => {
+        advancing.current = false;
+      });
+  }, [time, code, room, answers, connected, fail]);
+  return null;
 }
 function tone(success: boolean, muted: boolean) {
   if (muted) return;
@@ -250,8 +295,6 @@ export default function App() {
   const [online, setOnline] = useState(navigator.onLine);
   const [connected, setConnected] = useState(false);
   const [auto, setAuto] = useState(true);
-  const advanceLock = useRef(false);
-  const time = useTick();
   const host = session?.role === "host" && room?.hostId === uid;
   const players = Object.values(room?.players || {}).sort(
     (a, b) => a.joinedAt - b.joinedAt,
@@ -279,14 +322,8 @@ export default function App() {
         .then(setUid)
         .catch((e) => setError(api.friendlyError(e)));
   }, [session]);
-  useEffect(
-    () =>
-      onValue(ref(api.db, ".info/connected"), (snap) =>
-        setConnected(!!snap.val()),
-      ),
-    [],
-  );
   useEffect(() => {
+    setConnected(false);
     if (!session || !uid) return;
     setError("");
     return api.watchRoom(
@@ -300,6 +337,7 @@ export default function App() {
         setError(
           "This room has ended, expired, or your player was removed. Return home to join a new party.",
         ),
+      setConnected,
     );
   }, [session, uid]);
   useEffect(() => {
@@ -335,42 +373,32 @@ export default function App() {
   useEffect(() => {
     if (
       !host ||
+      !auto ||
       !session ||
-      !room ||
-      room.state.phase !== "question" ||
-      advanceLock.current ||
-      !connected
+      !connected ||
+      room?.state.phase !== "reveal"
     )
       return;
-    const allLocked =
-      players.length > 0 && players.every((p) => !!answers[p.uid]);
-    if (
-      time < room.state.deadline &&
-      !(allLocked && time >= room.state.startedAt)
-    )
-      return;
-    advanceLock.current = true;
-    api
-      .revealRound(session.code, {
-        ...room,
-        submissions: { [room.state.round]: answers },
-      })
-      .catch((e) => setError(api.friendlyError(e)))
-      .finally(() => {
-        advanceLock.current = false;
-      });
-  }, [time, host, room, answers, connected]);
-  useEffect(() => {
-    if (!host || !auto || !session || room?.state.phase !== "reveal") return;
     const id = setTimeout(
       () => void action(() => api.nextRound(session.code, room)),
       10000,
     );
     return () => clearTimeout(id);
-  }, [host, auto, session?.code, room?.state.phase, room?.state.round]);
+  }, [
+    host,
+    auto,
+    connected,
+    session?.code,
+    room?.state.phase,
+    room?.state.round,
+  ]);
 
   async function action(work: () => Promise<unknown>) {
     if (busy) return;
+    if (session && !connected) {
+      setToast("Reconnecting… please wait until your room is back in sync.");
+      return;
+    }
     setBusy(true);
     setError("");
     try {
@@ -418,6 +446,15 @@ export default function App() {
 
   return (
     <div className="app-shell">
+      {host && room && session && (
+        <HostRoundClock
+          code={session.code}
+          room={room}
+          answers={answers}
+          connected={connected}
+          fail={setError}
+        />
+      )}
       <header className="topbar">
         <div className="brand-group">
           <button
@@ -544,7 +581,7 @@ export default function App() {
       {session && online && !connected && (
         <div className="connection-banner" role="status">
           <LoaderCircle size={16} className="spin" /> Reconnecting to your room…
-          your locked answer is saved.
+          answers resume when you’re back in sync.
         </div>
       )}
       {error && (
@@ -799,7 +836,7 @@ export default function App() {
               uid={uid}
               host={!!host}
               players={players}
-              busy={busy}
+              busy={busy || !connected}
               action={action}
               copy={copy}
             />
@@ -809,7 +846,7 @@ export default function App() {
               players={players}
               uid={uid}
               host={!!host}
-              busy={busy}
+              busy={busy || !connected}
               rematch={() => void action(() => api.rematch(session.code))}
               home={goHome}
             />
@@ -830,7 +867,6 @@ export default function App() {
                   <QuestionStage
                     question={question}
                     state={room.state}
-                    time={time}
                     answers={answers}
                     players={players}
                   />
@@ -873,7 +909,7 @@ export default function App() {
                       {room.state.phase === "reveal" && (
                         <button
                           className="button primary full"
-                          disabled={busy}
+                          disabled={busy || !connected}
                           onClick={() =>
                             void action(() => api.nextRound(session.code, room))
                           }
@@ -905,7 +941,7 @@ export default function App() {
                       key={`${room.state.round}-${room.state.phase}`}
                       question={question}
                       state={room.state}
-                      time={time}
+                      connected={online && connected}
                       existing={answers[uid]}
                       outcome={room.state.outcomes?.[uid]}
                       muted={muted}
@@ -1666,16 +1702,15 @@ function Lobby({
 function QuestionStage({
   question,
   state,
-  time,
   answers,
   players,
 }: {
   question: Question;
   state: GameState;
-  time: number;
   answers: Record<string, Answer>;
   players: Player[];
 }) {
+  const time = useTick(state.phase === "question");
   const remaining = Math.max(0, Math.ceil((state.deadline - time) / 1000));
   const countdown = Math.max(0, Math.ceil((state.startedAt - time) / 1000));
   const duration = state.deadline - state.startedAt;
@@ -1831,7 +1866,7 @@ function QuestionStage({
 function AnswerPad({
   question,
   state,
-  time,
+  connected,
   existing,
   outcome,
   muted,
@@ -1839,7 +1874,7 @@ function AnswerPad({
 }: {
   question: Question;
   state: GameState;
-  time: number;
+  connected: boolean;
   existing?: Answer;
   outcome?: GameState["outcomes"][string];
   muted: boolean;
@@ -1851,13 +1886,15 @@ function AnswerPad({
   const [sending, setSending] = useState(false);
   const [locked, setLocked] = useState(false);
   const [error, setError] = useState("");
-  const lockedIn = !!existing || locked;
+  const time = useTick(state.phase === "question");
+  const lockedIn = locked || (!!existing && !sending && !error);
   const ready =
+    connected &&
     time >= state.startedAt &&
     time <= state.deadline &&
     state.phase === "question";
   async function send(value: number | string, guess?: number) {
-    if (!ready || lockedIn || sending) return;
+    if (!ready || lockedIn || sending || api.now() > state.deadline) return;
     setSending(true);
     setError("");
     try {
@@ -2021,9 +2058,11 @@ function AnswerPad({
       )}
       {!ready && (
         <p className="field-note">
-          {time < state.startedAt
-            ? "Get ready… answers open after the countdown."
-            : "Time’s up. Waiting for the host to reveal."}
+          {!connected
+            ? "Reconnecting… answers resume when you’re back in sync."
+            : time < state.startedAt
+              ? "Get ready… answers open after the countdown."
+              : "Time’s up. Waiting for the host to reveal."}
         </p>
       )}
       {error && (
@@ -2198,7 +2237,7 @@ function Practice({ muted }: { muted: boolean }) {
       {},
     ),
   );
-  const time = useTick();
+  const time = useTick(state.phase === "question");
   const player: Player = {
     uid: "practice",
     name: "You",
@@ -2229,7 +2268,6 @@ function Practice({ muted }: { muted: boolean }) {
       <QuestionStage
         question={question}
         state={state}
-        time={time}
         answers={{}}
         players={[player]}
       />

@@ -11,10 +11,13 @@ import {
   serverTimestamp,
   onDisconnect,
   remove,
+  goOffline,
+  goOnline,
 } from "firebase/database";
 import { firebaseConfig } from "./firebase-config";
 import type { Answer, GameState, Player, Room, Settings } from "./types";
 import { deckFor, questionState, scoreRound } from "./engine";
+import { withRequestTimeout } from "./network";
 
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
@@ -131,8 +134,111 @@ export function watchRoom(
   code: string,
   next: (room: Room | null) => void,
   fail: (error: Error) => void,
+  ready: (connected: boolean) => void,
 ): () => void {
-  return onValue(ref(db, `rooms/${code}`), (snap) => next(snap.val()), fail);
+  let disposed = false;
+  let connected = false;
+  let hidden = document.visibilityState === "hidden";
+  let revision = 0;
+  let request = 0;
+  let retry: ReturnType<typeof setTimeout> | undefined;
+  const synchronize = async () => {
+    const attempt = ++request;
+    clearTimeout(retry);
+    ready(false);
+    if (!connected || hidden || !navigator.onLine) return;
+    const before = revision;
+    try {
+      // SDK get() may immediately return its active listener's memory cache.
+      // A network-only read verifies the room after a mobile page resumes.
+      const room = await readServer<Room | null>(`rooms/${code}`);
+      if (disposed || attempt !== request) return;
+      if (before === revision) next(room);
+      ready(connected && !hidden && navigator.onLine);
+    } catch (error) {
+      if (disposed || attempt !== request) return;
+      if (error instanceof Error && error.message === "Room unavailable")
+        fail(error);
+      else retry = setTimeout(() => void synchronize(), 2000);
+    }
+  };
+  const stopRoom = onValue(
+    ref(db, `rooms/${code}`),
+    (snap) => {
+      if (disposed) return;
+      revision++;
+      next(snap.val());
+    },
+    (error) => {
+      ++request;
+      connected = false;
+      ready(false);
+      fail(error);
+    },
+  );
+  const stopConnection = onValue(ref(db, ".info/connected"), (snap) => {
+    if (disposed) return;
+    connected = !!snap.val();
+    void synchronize();
+  });
+  const reconnect = () => {
+    if (disposed || hidden) return;
+    connected = false;
+    ++request;
+    ready(false);
+    // Replace a socket that may have been frozen while an iPhone was asleep.
+    goOffline(db);
+    goOnline(db);
+  };
+  const visibility = () => {
+    const wasHidden = hidden;
+    hidden = document.visibilityState === "hidden";
+    if (hidden) {
+      ++request;
+      clearTimeout(retry);
+      ready(false);
+    } else if (wasHidden) reconnect();
+  };
+  const pageshow = (event: PageTransitionEvent) => {
+    if (event.persisted) {
+      hidden = document.visibilityState === "hidden";
+      reconnect();
+    }
+  };
+  const offline = () => {
+    ++request;
+    clearTimeout(retry);
+    ready(false);
+  };
+  document.addEventListener("visibilitychange", visibility);
+  window.addEventListener("pageshow", pageshow);
+  window.addEventListener("online", reconnect);
+  window.addEventListener("offline", offline);
+  return () => {
+    disposed = true;
+    ++request;
+    clearTimeout(retry);
+    stopRoom();
+    stopConnection();
+    document.removeEventListener("visibilitychange", visibility);
+    window.removeEventListener("pageshow", pageshow);
+    window.removeEventListener("online", reconnect);
+    window.removeEventListener("offline", offline);
+  };
+}
+
+async function readServer<T>(path: string): Promise<T> {
+  await identity();
+  const token = await auth.currentUser!.getIdToken();
+  const url = new URL(`${firebaseConfig.databaseURL}/${path}.json`);
+  url.searchParams.set("auth", token);
+  return withRequestTimeout(async (signal) => {
+    const response = await fetch(url, { cache: "no-store", signal });
+    if (response.status === 401 || response.status === 403)
+      throw new Error("Room unavailable");
+    if (!response.ok) throw new Error("Connection interrupted");
+    return response.json();
+  }, 8000);
 }
 export function watchAnswers(
   code: string,
@@ -198,11 +304,14 @@ export async function revealRound(code: string, room: Room): Promise<void> {
   const question = deckFor(room.settings, room.deckSeed || code)[
     room.state.round
   ];
+  const answers = await readServer<Record<string, Answer> | null>(
+    `answers/${code}/${room.state.round}`,
+  );
   const scored = scoreRound(
     question,
     room.state,
     Object.values(room.players || {}),
-    room.submissions?.[room.state.round] || {},
+    answers || {},
   );
   // Compare the phase and round so reconnecting or double-clicking cannot score twice.
   await runTransaction(
