@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import release from "../release.json";
+import { scheduleUpdateChecks } from "./update-polling";
 import {
   fetchRelease,
   isNewerVersion,
@@ -16,7 +17,7 @@ const standalone = () =>
   window.matchMedia("(display-mode: standalone)").matches ||
   !!(navigator as Navigator & { standalone?: boolean }).standalone;
 
-export function usePwa() {
+export function usePwa(gameRound: string | null = null) {
   const [installed, setInstalled] = useState(standalone);
   const [installPrompt, setInstallPrompt] = useState<InstallPrompt | null>(
     null,
@@ -25,6 +26,7 @@ export function usePwa() {
   const [refreshing, setRefreshing] = useState(false);
   const [updateError, setUpdateError] = useState("");
   const registration = useRef<ServiceWorkerRegistration | null>(null);
+  const checkUpdates = useRef<() => void>(() => {});
   const base = new URL("./", window.location.href).href;
 
   useEffect(() => {
@@ -66,6 +68,7 @@ export function usePwa() {
     };
     const check = async () => {
       if (
+        disposed ||
         checking ||
         !navigator.onLine ||
         document.visibilityState === "hidden"
@@ -85,6 +88,7 @@ export function usePwa() {
           .then(inspectWorker)
           .catch(() => {});
     };
+    checkUpdates.current = () => void check();
     window.addEventListener("beforeinstallprompt", offer);
     window.addEventListener("appinstalled", added);
     mode.addEventListener("change", onMode);
@@ -108,11 +112,9 @@ export function usePwa() {
         })
         .catch(() => {});
     }
-    void check();
-    const interval = setInterval(check, 5 * 60 * 1000);
     return () => {
       disposed = true;
-      clearInterval(interval);
+      checkUpdates.current = () => {};
       window.removeEventListener("beforeinstallprompt", offer);
       window.removeEventListener("appinstalled", added);
       mode.removeEventListener("change", onMode);
@@ -125,6 +127,11 @@ export function usePwa() {
       registration.current?.removeEventListener("updatefound", onFound);
     };
   }, [base]);
+
+  useEffect(
+    () => scheduleUpdateChecks(() => checkUpdates.current(), gameRound !== null),
+    [base, gameRound],
+  );
 
   async function install(): Promise<"accepted" | "dismissed" | "unavailable"> {
     if (!installPrompt) return "unavailable";

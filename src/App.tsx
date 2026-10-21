@@ -204,7 +204,6 @@ function tone(success: boolean, muted: boolean) {
 }
 
 export default function App() {
-  const pwa = usePwa();
   const initialCode =
     new URLSearchParams(location.search)
       .get("room")
@@ -233,6 +232,13 @@ export default function App() {
     readSaved("socialbuzz.settings", DEFAULT_SETTINGS),
   );
   const [room, setRoom] = useState<Room | null>(null);
+  const pwa = usePwa(
+    session &&
+      room &&
+      (room.state.phase === "question" || room.state.phase === "reveal")
+      ? `${session.code}:${room.state.round}:${room.state.phase}`
+      : null,
+  );
   const [answers, setAnswers] = useState<Record<string, Answer>>({});
   const [uid, setUid] = useState("");
   const [busy, setBusy] = useState(false);
