@@ -1,5 +1,12 @@
 export type Mode = "mix" | "clue" | "poll" | "board" | "list";
-export type Phase = "lobby" | "question" | "reveal" | "finished" | "closed";
+export type Phase =
+  | "lobby"
+  | "preparing"
+  | "countdown"
+  | "question"
+  | "reveal"
+  | "finished"
+  | "closed";
 export type Category =
   | "All categories"
   | "Everyday"
@@ -57,6 +64,15 @@ export interface GameState {
   outcomes: Record<string, Outcome>;
   revealText: string;
   votes?: number[];
+  syncToken?: string;
+  countdownDigit?: number;
+  countdownAt?: number;
+}
+export interface RoundReady {
+  token: string;
+  step: number;
+  at: number;
+  version: string;
 }
 export interface Room {
   hostId: string;
@@ -67,6 +83,7 @@ export interface Room {
   state: GameState;
   players?: Record<string, Player>;
   submissions?: Record<string, Record<string, Answer>>;
+  roundReady?: Record<string, RoundReady>;
 }
 export interface Session {
   code: string;

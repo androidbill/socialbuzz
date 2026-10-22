@@ -7,3 +7,5 @@
 - A newer build must prompt for Refresh. Do not reload an active game automatically or activate an update without the user's Refresh action.
 - Keep installation visible on phones. Provide native install prompts when supported and honest browser instructions otherwise.
 - Test version rollover, update detection, refresh activation, and offline behavior after changes to the PWA lifecycle.
+- Multiplayer starts use readiness barriers and acknowledged countdown digits. Never start a fixed three-second countdown when the host first sends a round; late phones must receive and display every digit before question timing starts.
+- Keep active player controls within the visible phone viewport. Verify all four game modes at 360 by 640, including input/submit visibility in a keyboard-sized viewport.

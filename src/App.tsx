@@ -50,6 +50,13 @@ import {
 } from "./engine";
 import * as api from "./firebase";
 import { observeGameClock } from "./game-clock";
+import {
+  confirmVisibleStep,
+  everyoneReady,
+  readyForStep,
+  syncStep,
+  participantKeys,
+} from "./round-sync";
 import { APP_VERSION, usePwa } from "./usePwa";
 import {
   DEFAULT_SETTINGS,
@@ -195,6 +202,22 @@ function HostRoundClock({
   useEffect(() => {
     if (
       !connected ||
+      !everyoneReady(room) ||
+      advancing.current ||
+      !["preparing", "countdown"].includes(room.state.phase)
+    )
+      return;
+    advancing.current = true;
+    void api
+      .advanceSynchronizedRound(code, room)
+      .catch((error) => fail(api.friendlyError(error)))
+      .finally(() => {
+        advancing.current = false;
+      });
+  }, [code, room, connected, fail]);
+  useEffect(() => {
+    if (
+      !connected ||
       room.state.phase !== "question" ||
       advancing.current ||
       time < retryAt.current
@@ -220,6 +243,168 @@ function HostRoundClock({
       });
   }, [time, code, room, answers, connected, fail]);
   return null;
+}
+
+function RoundSyncScreen({
+  room,
+  code,
+  uid,
+  host,
+  connected,
+}: {
+  room: Room;
+  code: string;
+  uid: string;
+  host: boolean;
+  connected: boolean;
+}) {
+  const time = useTick();
+  const state = room.state;
+  const key = host ? "host" : uid;
+  const acknowledged = readyForStep(room, key);
+  const showDigit =
+    state.phase === "countdown" && time >= (state.countdownAt || 0);
+  const [previousDigit, setPreviousDigit] = useState<number | null>(null);
+  useEffect(() => {
+    if (showDigit) setPreviousDigit(state.countdownDigit || null);
+  }, [showDigit, state.countdownDigit]);
+  const displayedDigit = showDigit ? state.countdownDigit : previousDigit;
+  useEffect(() => {
+    if (
+      !connected ||
+      acknowledged ||
+      (state.phase === "countdown" && !showDigit)
+    )
+      return;
+    return confirmVisibleStep(
+      state,
+      api.now,
+      () => document.visibilityState !== "hidden",
+      (step) => api.acknowledgeRound(code, state, host, APP_VERSION, step),
+    );
+  }, [
+    code,
+    host,
+    connected,
+    acknowledged,
+    state.syncToken,
+    state.phase,
+    state.countdownDigit,
+    state.countdownAt,
+    showDigit,
+  ]);
+  const waiting = participantKeys(room).filter((id) => !readyForStep(room, id));
+  return (
+    <div className="round-sync-screen" aria-live="polite">
+      <span className="eyebrow">
+        ROUND {state.round + 1} · EVERYONE TOGETHER
+      </span>
+      {displayedDigit ? (
+        <strong className="sync-digit" key={displayedDigit}>
+          {displayedDigit}
+        </strong>
+      ) : (
+        <>
+          <LoaderCircle className="spin" size={32} />
+          <h1>Getting everyone ready…</h1>
+        </>
+      )}
+      <p>
+        {displayedDigit
+          ? "Eyes up. Phones ready."
+          : "Keep SocialBuzz open. We’ll start together."}
+      </p>
+      <div className="sync-readiness">
+        <span className={readyForStep(room, "host") ? "ready" : ""}>Host</span>
+        {Object.values(room.players || {}).map((player) => (
+          <span
+            key={player.uid}
+            className={readyForStep(room, player.uid) ? "ready" : ""}
+          >
+            {player.name}
+            {host && !readyForStep(room, player.uid) && (
+              <button
+                aria-label={`Remove ${player.name}`}
+                onClick={() => void api.removePlayer(code, player.uid)}
+              >
+                <X size={12} />
+              </button>
+            )}
+          </span>
+        ))}
+      </div>
+      {host && waiting.length > 0 && (
+        <small>
+          Waiting for{" "}
+          {waiting
+            .map((id) =>
+              id === "host" ? "the host screen" : room.players?.[id]?.name,
+            )
+            .join(", ")}
+          . Update and keep each phone open.
+        </small>
+      )}
+    </div>
+  );
+}
+
+function PlayerQuestion({
+  question,
+  state,
+}: {
+  question: Question;
+  state: GameState;
+}) {
+  const time = useTick(state.phase === "question");
+  if (state.phase === "question" && time < state.startedAt)
+    return (
+      <div className="phone-start">
+        <Sparkles size={24} />
+        <strong>Here we go…</strong>
+      </div>
+    );
+  const seconds = Math.max(0, Math.ceil((state.deadline - time) / 1000));
+  const duration = state.deadline - state.startedAt;
+  const hint = Math.min(
+    2,
+    Math.floor((time - state.startedAt) / (duration / 4)) - 1,
+  );
+  return (
+    <div className="phone-question">
+      <div className="phone-question-meta">
+        <span>{question.category}</span>
+        <span className={seconds <= 5 ? "urgent" : ""}>
+          <Clock3 size={14} />
+          {state.phase === "reveal" ? "REVEAL" : `${seconds}s`}
+        </span>
+      </div>
+      <h1>{question.prompt}</h1>
+      {state.phase === "question" && (
+        <div
+          className="timer-track"
+          role="progressbar"
+          aria-label="Time remaining"
+          aria-valuemin={0}
+          aria-valuemax={duration / 1000}
+          aria-valuenow={seconds}
+        >
+          <span
+            style={{
+              width: `${Math.max(0, Math.min(100, (100 * (state.deadline - time)) / duration))}%`,
+            }}
+          />
+        </div>
+      )}
+      {state.phase === "question" && question.kind === "clue" && (
+        <p className="phone-hint">
+          <Sparkles size={13} />
+          {hint >= 0
+            ? question.hints?.[hint]
+            : "Trust your first instinct. Clues are coming."}
+        </p>
+      )}
+    </div>
+  );
 }
 function tone(success: boolean, muted: boolean) {
   if (muted) return;
@@ -280,7 +465,9 @@ export default function App() {
   const pwa = usePwa(
     session &&
       room &&
-      (room.state.phase === "question" || room.state.phase === "reveal")
+      ["preparing", "countdown", "question", "reveal"].includes(
+        room.state.phase,
+      )
       ? `${session.code}:${room.state.round}:${room.state.phase}`
       : null,
   );
@@ -304,6 +491,49 @@ export default function App() {
     rawQuestion && room && session
       ? shuffleQuestion(rawQuestion, room.deckSeed || session.code)
       : undefined;
+  const playerGame =
+    !!session &&
+    !host &&
+    !!question &&
+    !!room &&
+    ["preparing", "countdown", "question", "reveal"].includes(room.state.phase);
+  const synchronizing =
+    room?.state.phase === "preparing" || room?.state.phase === "countdown";
+  useEffect(() => {
+    document.documentElement.classList.toggle("phone-game", playerGame);
+    const resize = () => {
+      const height = window.visualViewport?.height || window.innerHeight;
+      document.documentElement.style.setProperty(
+        "--phone-height",
+        `${height}px`,
+      );
+      const editing = ["TEXTAREA", "INPUT"].includes(
+        document.activeElement?.tagName || "",
+      );
+      document.documentElement.classList.toggle(
+        "phone-keyboard",
+        playerGame &&
+          editing &&
+          (height < 500 || height < window.innerHeight * 0.78),
+      );
+    };
+    if (playerGame) {
+      resize();
+      window.visualViewport?.addEventListener("resize", resize);
+      window.addEventListener("resize", resize);
+      document.addEventListener("focusin", resize);
+      document.addEventListener("focusout", resize);
+    }
+    return () => {
+      document.documentElement.classList.remove("phone-game");
+      document.documentElement.classList.remove("phone-keyboard");
+      window.visualViewport?.removeEventListener("resize", resize);
+      window.removeEventListener("resize", resize);
+      document.removeEventListener("focusin", resize);
+      document.removeEventListener("focusout", resize);
+      document.documentElement.style.removeProperty("--phone-height");
+    };
+  }, [playerGame]);
 
   useEffect(() => {
     const up = () => setOnline(true);
@@ -445,7 +675,7 @@ export default function App() {
   }
 
   return (
-    <div className="app-shell">
+    <div className={`app-shell ${playerGame ? "player-game" : ""}`}>
       {host && room && session && (
         <HostRoundClock
           code={session.code}
@@ -864,12 +1094,24 @@ export default function App() {
                       {room.settings.rounds}
                     </span>
                   </div>
-                  <QuestionStage
-                    question={question}
-                    state={room.state}
-                    answers={answers}
-                    players={players}
-                  />
+                  {synchronizing ? (
+                    <RoundSyncScreen
+                      room={room}
+                      code={session.code}
+                      uid={uid}
+                      host={!!host}
+                      connected={online && connected}
+                    />
+                  ) : !host ? (
+                    <PlayerQuestion question={question} state={room.state} />
+                  ) : (
+                    <QuestionStage
+                      question={question}
+                      state={room.state}
+                      answers={answers}
+                      players={players}
+                    />
+                  )}
                   <div className="stage-bottom">
                     <span>
                       <ShieldCheck size={14} />
@@ -936,33 +1178,38 @@ export default function App() {
                     </div>
                   </aside>
                 ) : (
-                  <section className="controller-panel">
-                    <AnswerPad
-                      key={`${room.state.round}-${room.state.phase}`}
-                      question={question}
-                      state={room.state}
-                      connected={online && connected}
-                      existing={answers[uid]}
-                      outcome={room.state.outcomes?.[uid]}
-                      muted={muted}
-                      submit={(value, prediction) =>
-                        api.submitAnswer(
-                          session.code,
-                          room.state.round,
-                          value,
-                          prediction,
-                        )
-                      }
-                    />
-                    <div className="your-score">
-                      <Avatar index={room.players?.[uid]?.avatar || 0} small />
-                      <strong>{room.players?.[uid]?.name || "Player"}</strong>
-                      <span>
-                        {(room.state.totals?.[uid] || 0).toLocaleString()}{" "}
-                        <small>PTS</small>
-                      </span>
-                    </div>
-                  </section>
+                  !synchronizing && (
+                    <section className="controller-panel">
+                      <AnswerPad
+                        key={`${room.state.round}-${room.state.phase}`}
+                        question={question}
+                        state={room.state}
+                        connected={online && connected}
+                        existing={answers[uid]}
+                        outcome={room.state.outcomes?.[uid]}
+                        muted={muted}
+                        submit={(value, prediction) =>
+                          api.submitAnswer(
+                            session.code,
+                            room.state.round,
+                            value,
+                            prediction,
+                          )
+                        }
+                      />
+                      <div className="your-score">
+                        <Avatar
+                          index={room.players?.[uid]?.avatar || 0}
+                          small
+                        />
+                        <strong>{room.players?.[uid]?.name || "Player"}</strong>
+                        <span>
+                          {(room.state.totals?.[uid] || 0).toLocaleString()}{" "}
+                          <small>PTS</small>
+                        </span>
+                      </div>
+                    </section>
+                  )
                 )}
               </div>
               {!host && room.state.phase === "reveal" && (
@@ -1711,6 +1958,13 @@ function QuestionStage({
   players: Player[];
 }) {
   const time = useTick(state.phase === "question");
+  if (state.syncToken && state.phase === "question" && time < state.startedAt)
+    return (
+      <div className="phone-start">
+        <Sparkles size={28} />
+        <strong>Here we go…</strong>
+      </div>
+    );
   const remaining = Math.max(0, Math.ceil((state.deadline - time) / 1000));
   const countdown = Math.max(0, Math.ceil((state.startedAt - time) / 1000));
   const duration = state.deadline - state.startedAt;
@@ -1910,6 +2164,13 @@ function AnswerPad({
       setSending(false);
     }
   }
+  if (state.phase === "question" && time < state.startedAt)
+    return (
+      <div className="phone-start">
+        <span className="eyebrow">STARTING TOGETHER</span>
+        <p>Your answers open in a moment.</p>
+      </div>
+    );
   if (state.phase === "reveal")
     return (
       <div

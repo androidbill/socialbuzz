@@ -9,6 +9,7 @@
     "preview": "vite preview --host 127.0.0.1",
     "test": "vitest run",
     "test:integration": "node tests/live-backend.mjs",
+    "test:countdown": "node tests/live-countdown.mjs",
     "prebuild": "node scripts/prepare-release.mjs",
     "version:bump": "node scripts/bump-version.mjs"
   },

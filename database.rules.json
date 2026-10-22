@@ -42,6 +42,25 @@
         "state": {
           ".validate": "newData.hasChildren(['phase', 'round', 'questionId', 'startedAt', 'deadline', 'revealText'])"
         },
+        "roundReady": {
+          "$participant": {
+            ".write": "auth != null && root.child('rooms').child($code).child('expiresAt').val() > now && (($participant === 'host' && root.child('rooms').child($code).child('hostId').val() === auth.uid) || ($participant === auth.uid && root.child('rooms').child($code).child('players').child(auth.uid).exists())) && (root.child('rooms').child($code).child('state/phase').val() === 'preparing' || root.child('rooms').child($code).child('state/phase').val() === 'countdown')",
+            ".validate": "newData.hasChildren(['token', 'step', 'at', 'version']) && newData.child('token').val() === root.child('rooms').child($code).child('state/syncToken').val() && ((root.child('rooms').child($code).child('state/phase').val() === 'preparing' && newData.child('step').val() === 0) || (root.child('rooms').child($code).child('state/phase').val() === 'countdown' && newData.child('step').val() === root.child('rooms').child($code).child('state/countdownDigit').val()))",
+            "token": {
+              ".validate": "newData.isString() && newData.val().length <= 64"
+            },
+            "step": {
+              ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 3 && newData.val() % 1 === 0"
+            },
+            "at": {
+              ".validate": "newData.isNumber() && newData.val() === now"
+            },
+            "version": {
+              ".validate": "newData.isString() && newData.val().length <= 30"
+            },
+            "$other": { ".validate": false }
+          }
+        },
         "seats": {
           ".read": "auth != null",
           "$slot": {

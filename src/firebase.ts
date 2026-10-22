@@ -16,8 +16,13 @@ import {
 } from "firebase/database";
 import { firebaseConfig } from "./firebase-config";
 import type { Answer, GameState, Player, Room, Settings } from "./types";
-import { deckFor, questionState, scoreRound } from "./engine";
+import { deckFor, scoreRound } from "./engine";
 import { withRequestTimeout } from "./network";
+import {
+  preparationState,
+  nextSynchronizedState,
+  syncStep,
+} from "./round-sync";
 
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
@@ -289,15 +294,59 @@ export async function nextRound(code: string, room: Room): Promise<void> {
     return;
   }
   const question = deckFor(room.settings, room.deckSeed || code)[round];
-  await set(
+  const token = crypto.randomUUID();
+  await runTransaction(
     ref(db, `rooms/${code}/state`),
-    questionState(
-      round,
-      question,
-      room.settings,
-      now(),
-      room.state.totals || {},
-    ),
+    (state: GameState | null) => {
+      if (
+        !state ||
+        state.round !== room.state.round ||
+        !["lobby", "reveal"].includes(state.phase)
+      )
+        return;
+      return preparationState({ ...room, state }, question.id, round, token);
+    },
+  );
+}
+export async function acknowledgeRound(
+  code: string,
+  state: GameState,
+  host: boolean,
+  version: string,
+  step: number,
+): Promise<void> {
+  const uid = await identity();
+  await set(ref(db, `rooms/${code}/roundReady/${host ? "host" : uid}`), {
+    token: state.syncToken,
+    step,
+    at: serverTimestamp(),
+    version,
+  });
+}
+export async function advanceSynchronizedRound(
+  code: string,
+  room: Room,
+): Promise<void> {
+  const question = deckFor(room.settings, room.deckSeed || code)[
+    room.state.round
+  ];
+  const duration = ["board", "list"].includes(question.kind)
+    ? Math.max(35, room.settings.seconds)
+    : room.settings.seconds;
+  const next = nextSynchronizedState(room, now(), duration);
+  if (!next) return;
+  await runTransaction(
+    ref(db, `rooms/${code}/state`),
+    (state: GameState | null) => {
+      if (
+        !state ||
+        state.syncToken !== room.state.syncToken ||
+        state.phase !== room.state.phase ||
+        syncStep(state) !== syncStep(room.state)
+      )
+        return;
+      return next;
+    },
   );
 }
 export async function revealRound(code: string, room: Room): Promise<void> {
@@ -342,6 +391,7 @@ export async function rematch(code: string): Promise<void> {
       revealText: "",
     },
     submissions: null,
+    roundReady: null,
   });
 }
 export const closeRoom = (code: string) =>

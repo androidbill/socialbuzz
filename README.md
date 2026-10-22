@@ -15,6 +15,10 @@ An internet connection is required for multiplayer. Solo practice works offline 
 
 ## Phone synchronization and performance
 
+Each multiplayer round first waits for the host and every joined player to confirm their screen is ready. Firebase then coordinates **3, 2, and 1 as separate acknowledged steps**. A phone acknowledges a number only after displaying it in the foreground for a full second. The host cannot advance past a number while another phone is still loading or displaying it. A unique round token prevents acknowledgements from an earlier round counting toward the next. Question timing starts only after all screens have completed the countdown, with a shared future start and delivery allowance based on acknowledgement spread. Slow or backgrounded phones hold the group rather than silently skipping digits. Host controls can remove an absent player. All screens must use the updated app; an older app cannot acknowledge this protocol.
+
+The active player screen uses a compact question card, latest trivia clue, a two-by-two choice grid, and an adaptive answer area inside the visible phone viewport. Prediction and text-entry controls use the same layout. Browser bars, safe areas, orientation changes, and visual-viewport changes resize the play area. Full standings remain on the host screen; player round results and personal points remain visible on the phone.
+
 Firebase stores each round’s absolute `startedAt` and `deadline`. Every phone derives its countdown and clue timing from those shared timestamps, using Firebase’s server clock offset. Display ticks never subtract time from a private countdown, so a paused browser catches up rather than drifting. Answer timestamps and deadline checks are enforced by Firebase. Scores use the server’s accepted submissions, including answers the host’s listener has not displayed yet.
 
 Only the question display, answer controls, and host round controller redraw with the clock. The home screen, lobby, app header, forms, and standings no longer redraw ten times per second. Hidden pages stop display ticks and catch up immediately on visibility, focus, or page restoration.
@@ -53,6 +57,8 @@ npm run dev
 npm test
 npm run build
 ```
+
+`npm run test:countdown` runs opt-in live checks with two and three players, including a delayed phone, stale/forged acknowledgement rejection, and equal question timestamps. It creates and removes only disposable test rooms and users. Update database rules before running it against the configured project.
 
 Firebase project: `socialbuzz-party-2026`. Database: `socialbuzz-party-2026-default-rtdb` in `us-central1`. Guest identities use Firebase Anonymous Authentication.
 
