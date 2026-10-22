@@ -158,34 +158,46 @@ export function usePwa(gameRound: string | null = null) {
       return null;
     }
   }
-  async function refresh() {
-    if (refreshing || !latest) return;
+  async function refresh(reloadCurrent = false): Promise<string | null> {
+    if (refreshing || (!latest && !reloadCurrent)) return null;
     setRefreshing(true);
     setUpdateError("");
     try {
-      if (!navigator.onLine)
+      let target = latest;
+      if (reloadCurrent && navigator.onLine) {
+        try {
+          const candidate = await fetchRelease(base);
+          if (isNewerVersion(candidate.version, APP_VERSION)) {
+            target = candidate;
+            setLatest(candidate);
+          }
+        } catch {
+          // Refresh the current app even if the version check is unavailable.
+        }
+      }
+      if (target && !navigator.onLine)
         throw new Error(
           "Reconnect to the internet, then choose Refresh to download the update.",
         );
-      if ("serviceWorker" in navigator && import.meta.env.PROD) {
+      if (target && "serviceWorker" in navigator && import.meta.env.PROD) {
         const reg =
           registration.current ||
           (await navigator.serviceWorker.getRegistration(base));
         if (reg)
-          await requestWorkerActivation(
-            reg,
-            navigator.serviceWorker,
-            latest.version,
-          );
+          await requestWorkerActivation(reg, navigator.serviceWorker, target.version);
       }
-      window.location.replace(refreshUrl(window.location.href, latest.version));
+      if (target)
+        window.location.replace(refreshUrl(window.location.href, target.version));
+      else window.location.reload();
+      return null;
     } catch (error) {
-      setUpdateError(
+      const message =
         error instanceof Error
           ? error.message
-          : "The update could not finish. Please try Refresh again.",
-      );
+          : "The update could not finish. Please try Refresh again.";
+      setUpdateError(message);
       setRefreshing(false);
+      return message;
     }
   }
   return {

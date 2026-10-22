@@ -133,6 +133,7 @@ fieldset legend {
     radial-gradient(ellipse at 70% 10%, #27213a55, transparent 36%), var(--bg);
 }
 .topbar {
+  position: relative;
   max-width: 1376px;
   margin: auto;
   padding: 29px 52px;
@@ -3156,6 +3157,9 @@ footer > .text-button {
     width: 100%;
     justify-content: space-between;
   }
+  .home-header .brand-group {
+    padding-right: 54px;
+  }
   .version-badge {
     align-items: flex-end;
     border-left: 0;
@@ -3197,6 +3201,118 @@ footer > .text-button {
   }
   .update-banner .button {
     width: 100%;
+  }
+}
+
+.home-header {
+  padding-right: 112px;
+}
+.app-menu {
+  position: absolute;
+  z-index: 20;
+  top: 50%;
+  right: 52px;
+  transform: translateY(-50%);
+}
+.app-menu-trigger {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border: 1px solid #ffffff18;
+  border-radius: 12px;
+  color: #e7e7ee;
+  background: #ffffff08;
+  transition: background 0.18s, border-color 0.18s, color 0.18s;
+}
+.app-menu-trigger:hover,
+.app-menu-trigger[aria-expanded="true"] {
+  color: var(--coral);
+  background: #ff806b12;
+  border-color: #ff806b55;
+}
+.app-menu-items {
+  position: absolute;
+  top: calc(100% + 9px);
+  right: 0;
+  width: 196px;
+  padding: 7px;
+  border: 1px solid #ffffff1a;
+  border-radius: 14px;
+  background: #1b1e29;
+  box-shadow: 0 18px 48px #0009;
+  animation: menu-appear 0.14s ease-out;
+}
+.app-menu-items button {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 44px;
+  padding: 0 12px;
+  border-radius: 9px;
+  background: transparent;
+  color: #e6e7ee;
+  text-align: left;
+  font-size: 13px;
+}
+.app-menu-items button svg {
+  color: #a9aec0;
+}
+.app-menu-items button:hover,
+.app-menu-items button:focus-visible {
+  outline: none;
+  background: #ffffff0c;
+  color: #fff;
+}
+.app-menu-items button:hover svg,
+.app-menu-items button:focus-visible svg {
+  color: var(--coral);
+}
+.about-card {
+  display: flex;
+  align-items: center;
+  flex-direction: column;
+  padding: 18px 0 25px;
+  text-align: center;
+}
+.about-card img {
+  width: 92px;
+  height: 92px;
+  border-radius: 23px;
+  box-shadow: 0 12px 32px #0005;
+}
+.about-card h2 {
+  margin: 17px 0 2px;
+  font-family: Manrope, sans-serif;
+  font-size: 27px;
+  letter-spacing: -1px;
+}
+.about-card p {
+  margin: 7px 0 0;
+  color: #b5b9c8;
+  font-size: 13px;
+}
+.about-card .about-version {
+  color: var(--coral);
+  font-variant-numeric: tabular-nums;
+}
+.share-url {
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+@keyframes menu-appear {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@media (max-width: 800px) {
+  .home-header {
+    padding-right: 22px;
+  }
+  .home-header .app-menu {
+    top: 20px;
+    right: 22px;
+    transform: none;
   }
 }
 @media (prefers-reduced-motion: reduce) {

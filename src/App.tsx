@@ -23,9 +23,12 @@ import {
   LoaderCircle,
   LockKeyhole,
   Maximize2,
+  Info,
+  Menu,
   Play,
   Radio,
   RotateCcw,
+  Share2,
   Settings2,
   ShieldCheck,
   Smartphone,
@@ -81,6 +84,7 @@ const CATEGORIES: Category[] = [
   "Sports",
 ];
 const LETTERS = ["A", "B", "C", "D"];
+const APP_URL = "https://androidbill.github.io/socialbuzz/";
 const readSaved = <T,>(key: string, fallback: T): T => {
   try {
     return JSON.parse(localStorage.getItem(key) || "null") ?? fallback;
@@ -173,6 +177,81 @@ function Modal({
         {children}
       </div>
     </dialog>
+  );
+}
+
+function AppMenu({
+  refresh,
+  share,
+  about,
+}: {
+  refresh: () => void;
+  share: () => void;
+  about: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const root = useRef<HTMLDivElement>(null);
+  const trigger = useRef<HTMLButtonElement>(null);
+  const firstItem = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    firstItem.current?.focus();
+    const outside = (event: PointerEvent) => {
+      if (!root.current?.contains(event.target as Node)) setOpen(false);
+    };
+    const escape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setOpen(false);
+        trigger.current?.focus();
+      }
+    };
+    document.addEventListener("pointerdown", outside);
+    document.addEventListener("keydown", escape);
+    return () => {
+      document.removeEventListener("pointerdown", outside);
+      document.removeEventListener("keydown", escape);
+    };
+  }, [open]);
+  const choose = (action: () => void) => {
+    setOpen(false);
+    action();
+  };
+  return (
+    <div className="app-menu" ref={root}>
+      <button
+        ref={trigger}
+        className="app-menu-trigger"
+        aria-label="App menu"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-controls="app-menu-items"
+        onClick={() => setOpen((value) => !value)}
+      >
+        <Menu size={21} />
+      </button>
+      {open && (
+        <div
+          className="app-menu-items"
+          id="app-menu-items"
+          role="menu"
+          aria-label="App menu"
+        >
+          <button
+            ref={firstItem}
+            role="menuitem"
+            onClick={() => choose(refresh)}
+          >
+            <RotateCcw size={17} /> Refresh
+          </button>
+          <button role="menuitem" onClick={() => choose(share)}>
+            <Share2 size={17} /> Share
+          </button>
+          <button role="menuitem" onClick={() => choose(about)}>
+            <Info size={17} /> About
+          </button>
+        </div>
+      )}
+    </div>
   );
 }
 function useTick(active = true) {
@@ -456,7 +535,7 @@ export default function App() {
         : savedSession,
   );
   const [modal, setModal] = useState<
-    "host" | "join" | "help" | "practice" | "leave" | "install" | null
+    "host" | "join" | "help" | "practice" | "leave" | "install" | "about" | "share" | null
   >(shouldJoin ? "join" : null);
   const [settings, setSettings] = useState<Settings>(() =>
     readSaved("socialbuzz.settings", DEFAULT_SETTINGS),
@@ -644,13 +723,44 @@ export default function App() {
     setError("");
     setModal("host");
   }
-  async function copy(text: string) {
+  async function copy(
+    text: string,
+    message = "Invite link copied. Send it to your people.",
+    fallbackMessage = "Your invite link: ",
+  ) {
     try {
       await navigator.clipboard.writeText(text);
-      setToast("Invite link copied. Send it to your people.");
+      setToast(message);
     } catch {
-      setToast("Your invite link: " + text);
+      setToast(fallbackMessage + text);
     }
+  }
+  function shareApp() {
+    const payload = {
+      title: "SocialBuzz",
+      text: "Good company. Great competition.",
+      url: APP_URL,
+    };
+    if (navigator.share) {
+      void navigator.share(payload).catch((error: unknown) => {
+        if (error instanceof Error && error.name === "AbortError") return;
+        if (navigator.clipboard?.writeText) {
+          void navigator.clipboard
+            .writeText(APP_URL)
+            .then(
+              () => setToast("App link copied. Share it with your friends."),
+              () => setModal("share"),
+            );
+        } else setModal("share");
+      });
+      return;
+    }
+    if (navigator.clipboard?.writeText) {
+      void navigator.clipboard.writeText(APP_URL).then(
+        () => setToast("App link copied. Share it with your friends."),
+        () => setModal("share"),
+      );
+    } else setModal("share");
   }
   function goHome() {
     setSession(null);
@@ -685,7 +795,7 @@ export default function App() {
           fail={setError}
         />
       )}
-      <header className="topbar">
+      <header className={`topbar ${!session ? "home-header" : ""}`}>
         <div className="brand-group">
           <button
             className="brand"
@@ -764,6 +874,15 @@ export default function App() {
             </button>
           )}
         </nav>
+        {!session && (
+          <AppMenu
+            refresh={() =>
+              void pwa.refresh(true).then((error) => error && setToast(error))
+            }
+            share={shareApp}
+            about={() => setModal("about")}
+          />
+        )}
       </header>
       {pwa.latest && (
         <section
@@ -1225,6 +1344,43 @@ export default function App() {
         </main>
       )}
 
+      {modal === "about" && (
+        <Modal title="About SocialBuzz" close={() => setModal(null)}>
+          <div className="about-card">
+            <img src="./icon-192.png" alt="SocialBuzz app icon" />
+            <h2>SocialBuzz</h2>
+            <p className="about-version">Version {APP_VERSION}</p>
+            <p>Created by: Bill Parsons</p>
+          </div>
+          <button className="button primary full" onClick={() => setModal(null)}>
+            Done
+          </button>
+        </Modal>
+      )}
+      {modal === "share" && (
+        <Modal title="Share SocialBuzz" close={() => setModal(null)}>
+          <div className="dialog-title">
+            <span className="dialog-icon">
+              <Share2 />
+            </span>
+            <h2>Bring everyone in.</h2>
+            <p>Copy this link and share it with your friends.</p>
+          </div>
+          <button
+            className="button secondary full"
+            onClick={() =>
+              void copy(
+                APP_URL,
+                "App link copied. Share it with your friends.",
+                "App link: ",
+              )
+            }
+          >
+            <Copy size={16} /> Copy app link
+          </button>
+          <p className="field-note share-url">{APP_URL}</p>
+        </Modal>
+      )}
       {modal === "install" && (
         <Modal title="Install SocialBuzz" close={() => setModal(null)}>
           <div className="dialog-title">
